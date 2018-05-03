@@ -3,11 +3,16 @@ defmodule PropertyTests do
   use PropCheck
   use ExUnit.Case, async: false
 
-  @default_dir "./_tmp_server"
+  @default_dir "#{Path.expand(".")}/tmp/ftp"
   @test_port 2525
 
   require Logger
   # @moduletag capture_log: true
+
+  setup_all do
+    File.mkdir_p!(@default_dir)
+    :ok
+  end
 
   property "ftp connections" do
     numtests(
@@ -35,7 +40,7 @@ defmodule PropertyTests do
     )
   end
 
-  defstruct connected: false, authenticated: false, inets_pid: :disconnected
+  defstruct connected: false, authenticated: false, inets_pid: :disconnected, dir: @default_dir
 
   def initial_state, do: %__MODULE__{}
 
@@ -75,6 +80,7 @@ defmodule PropertyTests do
   def precondition(%{connected: false}, {:call, __MODULE__, :disconnect, _}), do: false
   def precondition(%{authenticated: true}, {:call, :ftp, :user, _}), do: false
   def precondition(%{authenticated: false}, {:call, :ftp, :pwd, _}), do: false
+  def precondition(%{authenticated: false}, {:call, :ftp, :cd, _, _}), do: false
   def precondition(%{connected: false}, {:call, :ftp, _, _}), do: false
   def precondition(_, _), do: true
 
@@ -149,7 +155,24 @@ defmodule PropertyTests do
     false
   end
 
-  def postcondition(_previous_state, _commad, _result), do: true
+  def postcondition(
+        %{connected: true, authenticated: true},
+        {:call, :ftp, :cd, _},
+        {:error, _} = error
+      ) do
+    IO.puts("failed to change directory #{inspect(error)}")
+    false
+  end
+
+  def postcondition(
+        %{connected: true, authenticated: true},
+        {:call, :ftp. :cd, [pid, dir]},
+        :ok
+      ) do
+      dir == :ftp.pwd(pid)
+  end
+
+  def postcondition(_previous_state, _command, _result), do: true
 
   def check_connections(count) do
     [{_ref, info}] = :ranch.info()
